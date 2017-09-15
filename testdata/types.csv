@@ -1,0 +1,6 @@
+string,bool,int,int8,int32,int64,uint,uint8,uint32,uint64,float32,float64
+,,,,,,,,,,,
+string,t,1,1,1,1,1,1,1,1,1,1
+,yes,,,,,,,,,,
+,no,,,,,,,,,,
+,,,,,,,,,,1.1,1.1
