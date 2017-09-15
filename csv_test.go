@@ -339,7 +339,7 @@ func TestReadNonStruct(t *testing.T) {
 	}
 }
 
-func TestReadAllNonSlice(t *testing.T) {
+func TestReadAllNonSliceStruct(t *testing.T) {
 	r := open("testdata/simple.csv")
 	if err := r.ReadAll(nil); err != nil {
 		t.Errorf("should not return err: %s", err)
@@ -350,6 +350,10 @@ func TestReadAllNonSlice(t *testing.T) {
 	}
 	var s Simple
 	if err := r.ReadAll(s); err == nil {
+		t.Error("should return err")
+	}
+	var si []int
+	if err := r.ReadAll(&si); err == nil {
 		t.Error("should return err")
 	}
 }

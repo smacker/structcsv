@@ -13,11 +13,15 @@ import (
 type StructReader struct {
 	csv *csv.Reader
 
-	headers []string
+	headers     []string
+	typeColumns map[reflect.Type]map[string]fieldPath
 }
 
 func NewStructReader(r *csv.Reader) *StructReader {
-	return &StructReader{csv: r}
+	return &StructReader{
+		csv:         r,
+		typeColumns: make(map[reflect.Type]map[string]fieldPath),
+	}
 }
 
 func (r *StructReader) Headers() ([]string, error) {
@@ -37,8 +41,8 @@ func (r *StructReader) Read(v interface{}) error {
 	if rType.Kind() != reflect.Ptr {
 		return fmt.Errorf("non-pointer %s", rType)
 	}
-	st := reflect.ValueOf(v).Elem()
-	rKind := st.Kind()
+	rValue := reflect.ValueOf(v).Elem()
+	rKind := rValue.Kind()
 	if rKind != reflect.Struct && rKind != reflect.Ptr {
 		return fmt.Errorf("can't read to type %s", rType)
 	}
@@ -50,15 +54,68 @@ func (r *StructReader) Read(v interface{}) error {
 	}
 
 	elType := getNonPtrElemType(rType)
-	m := make(map[string]fieldPath)
-	fillStructColumns(m, elType, nil)
-	if st.Kind() == reflect.Ptr {
-		if st.IsNil() {
-			st.Set(reflect.New(elType))
+	// input is empty struct pointer
+	if rValue.Kind() == reflect.Ptr {
+		if rValue.IsNil() {
+			rValue.Set(reflect.New(elType))
 		}
-		st = st.Elem()
+		rValue = rValue.Elem()
 	}
 
+	r.setColumnsFromType(elType)
+
+	return r.read(rValue)
+}
+
+func (r *StructReader) ReadAll(v interface{}) error {
+	if v == nil {
+		return nil
+	}
+	sliceType := reflect.TypeOf(v)
+	if sliceType.Kind() != reflect.Ptr {
+		return fmt.Errorf("non-pointer %s", sliceType)
+	}
+
+	slicePtr := reflect.ValueOf(v)
+	slice := slicePtr.Elem()
+	if slice.Kind() != reflect.Slice {
+		return fmt.Errorf("non-slice %s", sliceType)
+	}
+
+	elKind := sliceType.Elem().Elem().Kind()
+	if elKind != reflect.Struct && elKind != reflect.Ptr {
+		return fmt.Errorf("can't read to type %s", slice)
+	}
+
+	sliceOfPtrs := elKind != reflect.Ptr
+	elType := getNonPtrElemType(sliceType.Elem())
+	r.setColumnsFromType(elType)
+
+	if r.headers == nil {
+		if err := r.readHeaders(); err != nil {
+			return err
+		}
+	}
+
+	for {
+		rValue := reflect.New(elType)
+		err := r.read(rValue.Elem())
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return err
+		}
+		if sliceOfPtrs {
+			rValue = rValue.Elem()
+		}
+		slice.Set(reflect.Append(slice, rValue))
+	}
+	return nil
+}
+
+func (r *StructReader) read(rValue reflect.Value) error {
+	m := r.typeColumns[rValue.Type()]
 	record, err := r.csv.Read()
 	if err != nil {
 		return err
@@ -68,13 +125,40 @@ func (r *StructReader) Read(v interface{}) error {
 		if !ok {
 			continue
 		}
-		field := fieldIdx.Field(st)
-		s := record[i]
-		if err := set(field, h, s); err != nil {
+		field := fieldIdx.Field(rValue)
+		if err := set(field, h, record[i]); err != nil {
 			return err
 		}
 	}
 
+	return nil
+}
+
+func (r *StructReader) setColumnsFromType(rType reflect.Type) {
+	m, ok := r.typeColumns[rType]
+	if !ok {
+		m = make(map[string]fieldPath)
+		fillStructColumns(m, rType, nil)
+		r.typeColumns[rType] = m
+	}
+}
+
+func (r *StructReader) readHeaders() error {
+	headers, err := r.csv.Read()
+	if err != nil {
+		return err
+	}
+	dupMap := make(map[string]bool)
+	for i, h := range headers {
+		h = strings.TrimSpace(h)
+		headers[i] = h
+		if _, ok := dupMap[h]; ok {
+			return fmt.Errorf("csv contains duplicated header %s", h)
+		}
+		dupMap[h] = true
+	}
+
+	r.headers = headers
 	return nil
 }
 
@@ -217,54 +301,4 @@ func toFloat(s string) (float64, error) {
 		return 0, nil
 	}
 	return strconv.ParseFloat(s, 64)
-}
-
-func (r *StructReader) ReadAll(v interface{}) error {
-	if v == nil {
-		return nil
-	}
-	rType := reflect.TypeOf(v)
-	if rType.Kind() != reflect.Ptr {
-		return fmt.Errorf("non-pointer %s", rType)
-	}
-
-	slicePtr := reflect.ValueOf(v)
-	slice := slicePtr.Elem()
-
-	if slice.Kind() != reflect.Slice {
-		return fmt.Errorf("non-slice %s", rType)
-	}
-
-	elType := reflect.TypeOf(v).Elem().Elem()
-	for {
-		el := reflect.New(elType)
-		err := r.Read(el.Interface())
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		slice.Set(reflect.Append(slice, el.Elem()))
-	}
-	return nil
-}
-
-func (r *StructReader) readHeaders() error {
-	headers, err := r.csv.Read()
-	if err != nil {
-		return err
-	}
-	dupMap := make(map[string]bool)
-	for i, h := range headers {
-		h = strings.TrimSpace(h)
-		headers[i] = h
-		if _, ok := dupMap[h]; ok {
-			return fmt.Errorf("csv contains duplicated header %s", h)
-		}
-		dupMap[h] = true
-	}
-
-	r.headers = headers
-	return nil
 }
