@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
+	"io"
 	"testing"
 )
 
@@ -41,6 +42,33 @@ func BenchmarkStringsStd(b *testing.B) {
 			}
 		}
 	}
+}
+
+func BenchmarkOverhead(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		m := &MockReader{Size: 1000}
+		r := NewStructReader(m)
+		var s []Strings
+		_ = r.ReadAll(&s)
+	}
+}
+
+type MockReader struct {
+	Size int
+	i    int
+}
+
+var str = []string{"a", "b", "c", "d", "e", "f", "g"}
+
+func (m *MockReader) Read() (record []string, err error) {
+	if m.i > m.Size {
+		return nil, io.EOF
+	}
+	m.i++
+	return str, nil
+}
+func (m *MockReader) ReadAll() (record [][]string, err error) {
+	return nil, nil
 }
 
 type Strings struct {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"reflect"
@@ -11,13 +10,18 @@ import (
 )
 
 type StructReader struct {
-	csv *csv.Reader
+	csv CsvReader
 
 	headers     []string
 	typeColumns map[reflect.Type]map[string]fieldPath
 }
 
-func NewStructReader(r *csv.Reader) *StructReader {
+type CsvReader interface {
+	Read() (record []string, err error)
+	ReadAll() (records [][]string, err error)
+}
+
+func NewStructReader(r CsvReader) *StructReader {
 	return &StructReader{
 		csv:         r,
 		typeColumns: make(map[reflect.Type]map[string]fieldPath),
@@ -121,7 +125,7 @@ func (r *StructReader) read(rValue reflect.Value) error {
 		return err
 	}
 	for i, h := range r.headers {
-		fieldIdx, ok := m[strings.ToLower(h)]
+		fieldIdx, ok := m[h]
 		if !ok {
 			continue
 		}
@@ -150,7 +154,7 @@ func (r *StructReader) readHeaders() error {
 	}
 	dupMap := make(map[string]bool)
 	for i, h := range headers {
-		h = strings.TrimSpace(h)
+		h = strings.ToLower(strings.TrimSpace(h))
 		headers[i] = h
 		if _, ok := dupMap[h]; ok {
 			return fmt.Errorf("csv contains duplicated header %s", h)
