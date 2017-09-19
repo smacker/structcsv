@@ -66,9 +66,8 @@ func (r *StructReader) Read(v interface{}) error {
 		rValue = rValue.Elem()
 	}
 
-	r.setColumnsFromType(elType)
-
-	return r.read(rValue)
+	m := r.columnsFromType(elType)
+	return r.read(m, rValue)
 }
 
 func (r *StructReader) ReadAll(v interface{}) error {
@@ -93,7 +92,7 @@ func (r *StructReader) ReadAll(v interface{}) error {
 
 	sliceOfPtrs := elKind != reflect.Ptr
 	elType := getNonPtrElemType(sliceType.Elem())
-	r.setColumnsFromType(elType)
+	m := r.columnsFromType(elType)
 
 	if r.headers == nil {
 		if err := r.readHeaders(); err != nil {
@@ -103,7 +102,7 @@ func (r *StructReader) ReadAll(v interface{}) error {
 
 	for {
 		rValue := reflect.New(elType)
-		err := r.read(rValue.Elem())
+		err := r.read(m, rValue.Elem())
 		if err == io.EOF {
 			break
 		}
@@ -118,14 +117,13 @@ func (r *StructReader) ReadAll(v interface{}) error {
 	return nil
 }
 
-func (r *StructReader) read(rValue reflect.Value) error {
-	m := r.typeColumns[rValue.Type()]
+func (r *StructReader) read(fieldMap map[string]fieldPath, rValue reflect.Value) error {
 	record, err := r.csv.Read()
 	if err != nil {
 		return err
 	}
 	for i, h := range r.headers {
-		fieldIdx, ok := m[h]
+		fieldIdx, ok := fieldMap[h]
 		if !ok {
 			continue
 		}
@@ -138,13 +136,14 @@ func (r *StructReader) read(rValue reflect.Value) error {
 	return nil
 }
 
-func (r *StructReader) setColumnsFromType(rType reflect.Type) {
+func (r *StructReader) columnsFromType(rType reflect.Type) map[string]fieldPath {
 	m, ok := r.typeColumns[rType]
 	if !ok {
 		m = make(map[string]fieldPath)
 		fillStructColumns(m, rType, nil)
 		r.typeColumns[rType] = m
 	}
+	return r.typeColumns[rType]
 }
 
 func (r *StructReader) readHeaders() error {
