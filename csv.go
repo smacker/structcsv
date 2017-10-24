@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// StructReader reads CSV file using CsvReader and converts it to structs
 type StructReader struct {
 	csv CsvReader
 
@@ -16,11 +17,13 @@ type StructReader struct {
 	typeColumns map[reflect.Type]map[string]fieldPath
 }
 
+// CsvReader is an interface for csv reader (encoding/csv.Reader)
 type CsvReader interface {
 	Read() (record []string, err error)
 	ReadAll() (records [][]string, err error)
 }
 
+// NewStructReader returns a new StructReader that reads from r.
 func NewStructReader(r CsvReader) *StructReader {
 	return &StructReader{
 		csv:         r,
@@ -28,6 +31,7 @@ func NewStructReader(r CsvReader) *StructReader {
 	}
 }
 
+// Headers returns CSV headers as slice of strings
 func (r *StructReader) Headers() ([]string, error) {
 	if r.headers != nil {
 		return r.headers, nil
@@ -36,6 +40,7 @@ func (r *StructReader) Headers() ([]string, error) {
 	return r.headers, err
 }
 
+// Read reads one record from r in struct.
 func (r *StructReader) Read(v interface{}) error {
 	if v == nil {
 		return nil
@@ -70,6 +75,7 @@ func (r *StructReader) Read(v interface{}) error {
 	return r.read(m, rValue)
 }
 
+// ReadAll reads all the remaining records from r in the slice of structs.
 func (r *StructReader) ReadAll(v interface{}) error {
 	if v == nil {
 		return nil
